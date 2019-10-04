@@ -1,6 +1,9 @@
 import npyscreen
 
 
+###############################################
+# TUI prototype
+###############################################
 class App(npyscreen.StandardApp):
     def onStart(self):
         app_name = "bbchat"
