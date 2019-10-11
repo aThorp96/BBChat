@@ -2,6 +2,7 @@ import sys
 import array
 import json
 import logging
+import queue
 from cqc.pythonLib import CQCConnection
 from threading import Thread
 
@@ -11,61 +12,73 @@ from bb84.bb84 import bb84
 # Com Headers
 Q_KEYGEN = 5
 KEYGEN_OK = 10
-C_MESSAGE = 20
+MESSAGE = 20
 
 _log = logging.getLogger("BBChat")
 
 
-class Client:
+class Client(Thread):
     key_map = {}
 
     def __init__(self, key_length, message_add, node_name="Alice", q_logger=print):
         # For now use a key for a default recipient, "Bob"
-        self.tx_classical = node_name + "t"
-        self.rx_classical = node_name + "r"
+        Thread.__init__(self)
         self.node_name = node_name
         self.q_logger = q_logger
         self.message_add = message_add
-        # listen informs the listener thread to contiue
-        # and will be used to reap the thread upon exit
-        self.listen = True
-        self.cqc_locked = False
-        self.listener = Thread(target=self.listener)
-        self.listener.start()
-        # self.listener()
+        self.msg_queue = queue.Queue()
+        self.start()
 
-    def initiate_keygen(self, recipient):
+    def run(self):
+        self.running = True
+        while self.running:
+            self.q_logger("Running!")
+            if not self.msg_queue.empty():
+                msg = self.msg_queue.get()
+                self._send_message(msg["recipient"], msg["body"])
+            else:
+                self._check_messages()
+
+    def _initiate_keygen(self, recipient):
         init_msg = {"code": Q_KEYGEN, "sender": self.node_name}
         with bb84.get_CQCConnection(self.node_name) as cqc:
             cqc.sendClassical(recipient, json.dumps(init_msg).encode())
 
-        k = bb84.initiate_keygen(
-            # name=self.node_name, recipient=recipient
-            q_logger=self.q_logger
-        )
-        self.key_map[recipient] = k
+        try:
+            k = bb84.initiate_keygen(
+                name=self.node_name, recipient=recipient, q_logger=self.q_logger
+            )
+            self.key_map[recipient] = k
+        except bb84.PoorErrorRate as e:
+            self.q_logger("Bad error rate. Attempting again")
+            self._initiate_keygen(recipient)
 
-    def recv_keygen(self, initiator):
+    def _recv_keygen(self, initiator):
         self.q_logger("Recieving keygen")
-        k = bb84.target_keygen(
-            # name=self.node_name, initiator=initiator,
-            q_logger=self.q_logger
-        )
-        self.key_map[initiator] = k
+        try:
+            k = bb84.target_keygen(
+                name=self.node_name, initiator=initiator, q_logger=self.q_logger
+            )
+            self.key_map[initiator] = k
+        except bb84.PoorErrorRate as e:
+            self.q_logger("Bad error rate. Attempting again")
+            self._recv_keygen(initiator)
 
     def send_message(self, recipient, message):
-        # stop listening
-        self.cqc_locked = True
+        self.msg_queue.put({"recipient": recipient, "body": message})
+        bb84.get_CQCConnection(self.node_name).closeClassicalServer()
+
+    def _send_message(self, recipient, message):
         # Ensure we've co-generated a key
         if recipient not in self.key_map:
             self.q_logger("Initializing key")
-            self.initiate_keygen(recipient)
+            self._initiate_keygen(recipient)
 
         key = self.key_map[recipient]
-        packet = json.dumps({"code": C_MESSAGE, "sender": self.node_name})
+        packet = json.dumps({"code": MESSAGE, "sender": self.node_name})
 
         self.q_logger("Encrypting message")
-        encrypted = bb84.encrypt(message, key)
+        encrypted = bb84.encrypt(message, int(key))
 
         with bb84.get_CQCConnection(self.node_name) as cqc:
             self.q_logger("Transmitting message")
@@ -73,43 +86,37 @@ class Client:
             self.q_logger("Header sent")
             cqc.sendClassical(recipient, encrypted)
             self.q_logger("Message sent")
-        self.cqc_locked = False
 
-    def recv_message(self, sender, body):
+    def _recv_message(self, sender, body):
         key = self.key_map[sender]
         message = bb84.decrypt(body, int(key))
         self.message_add((sender, message.decode("utf-8")))
 
-    def listener(self):
+    def _check_messages(self):
         message = None
-        while self.listen:
-            if not self.cqc_locked:
-                try:
-                    with bb84.get_CQCConnection(self.node_name) as rx:
-                        self.cqc_locked = True
-                        self.q_logger("Listening for request")
-                        m = rx.recvClassical(timout=1).decode("utf-8")
-                        self.q_logger(m)
+        try:
+            # Check for messages
+            with bb84.get_CQCConnection(self.node_name) as rx:
+                self.q_logger("Attempting to receive new messages")
+                m = rx.recvClassical(timout=1).decode("utf-8")
+                self.q_logger("Received new messages")
+                message = json.loads(m)
+            self.q_logger("Got past message check")
+            # Check message type
+            if message.get("code") == Q_KEYGEN:
+                self._recv_keygen(message["sender"])
+            elif message.get("code") == MESSAGE:
+                self.q_logger("Incoming message from {}".format(message["sender"]))
+                with bb84.get_CQCConnection(self.node_name) as rx:
+                    body = rx.recvClassical()
+                self._recv_message(message["sender"], body)
 
-                        message = json.loads(m)
-                    self.cqc_locked = False
-                    if message["code"] == Q_KEYGEN:
-                        self.recv_keygen(message["sender"])
-                    elif message["code"] == C_MESSAGE:
-                        self.q_logger(
-                            "Incoming message from {}".format(message["sender"])
-                        )
-                        with bb84.get_CQCConnection(self.node_name) as rx:
-                            body = rx.recvClassical()
-                        self.recv_message(message["sender"], body)
-                except Exception as e:
-                    self.cqc_locked = False
-                    _log.debug(e)
+        except Exception as e:
+            # self.q_logger("Exception: {}".format(e))
+            _log.debug(e)
 
     def exit(self):
-        try:
-            self.listen = False
-            self.listener.exit()
-        except Exception:
-            # Thread not started
-            pass
+        # TODO figure out how the hell to close this...
+        bb84.get_CQCConnection(self.node_name).exit()
+        self.running = False
+        self.join()

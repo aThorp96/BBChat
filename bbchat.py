@@ -42,6 +42,7 @@ class BBChat(npyscreen.StandardApp):
                 q_logger=self.add_q_log,
                 node_name=self.name,
             )
+        _log.debug("Client running")
 
     def initialize_handers(self):
         signal.signal(signal.SIGTERM, self.exit_func)
