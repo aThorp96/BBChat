@@ -20,29 +20,44 @@ _log = logging.getLogger("BBChat")
 class Client(Thread):
     key_map = {}
 
-    def __init__(self, key_length, message_add, node_name="Alice", q_logger=print):
+    def __init__(
+        self, initiator, key_length, message_add, node_name="Alice", q_logger=print
+    ):
         # For now use a key for a default recipient, "Bob"
         Thread.__init__(self)
+        self.initiator = initiator
+
+        # Yeah.. if we would get rid of this code at some point, that'd be great..
+        if self.initiator:
+            self.recipient = "Bob"
+        else:
+            self.recipient = "Alice"
+
         self.node_name = node_name
         self.q_logger = q_logger
         self.message_add = message_add
         self.msg_queue = queue.Queue()
+        self.listening = True
         self.start()
 
     def run(self):
-        self.running = True
-        while self.running:
-            self.q_logger("Running!")
-            if not self.msg_queue.empty():
-                msg = self.msg_queue.get()
-                self._send_message(msg["recipient"], msg["body"])
-            else:
-                self._check_messages()
+        # Generate a key and then begin listining for messages
+        if self.initiator:
+            self._initiate_keygen(self.recipient)
+        else:
+            self._recv_keygen(self.recipient)
+
+        self.conn = bb84.get_CQCConnection(self.node_name)._classicalConn[
+            self.recipient
+        ]
+        # main loop
+        while self.listening:
+            self._check_messages()
 
     def _initiate_keygen(self, recipient):
         init_msg = {"code": Q_KEYGEN, "sender": self.node_name}
-        with bb84.get_CQCConnection(self.node_name) as cqc:
-            cqc.sendClassical(recipient, json.dumps(init_msg).encode())
+        # with bb84.get_CQCConnection(self.node_name) as cqc:
+        # cqc.sendClassical(recipient, json.dumps(init_msg).encode())
 
         try:
             k = bb84.initiate_keygen(
@@ -69,23 +84,17 @@ class Client(Thread):
         bb84.get_CQCConnection(self.node_name).closeClassicalServer()
 
     def _send_message(self, recipient, message):
-        # Ensure we've co-generated a key
-        if recipient not in self.key_map:
-            self.q_logger("Initializing key")
-            self._initiate_keygen(recipient)
-
         key = self.key_map[recipient]
         packet = json.dumps({"code": MESSAGE, "sender": self.node_name})
 
         self.q_logger("Encrypting message")
         encrypted = bb84.encrypt(message, int(key))
 
-        with bb84.get_CQCConnection(self.node_name) as cqc:
-            self.q_logger("Transmitting message")
-            cqc.sendClassical(recipient, bytearray(packet, "utf-8"))
-            self.q_logger("Header sent")
-            cqc.sendClassical(recipient, encrypted)
-            self.q_logger("Message sent")
+        self.q_logger("Transmitting message")
+        # cqc.sendClassical(recipient, bytearray(packet, "utf-8"))
+        self.q_logger("Header sent")
+        self.conn.send(bytes(encrypted))
+        self.q_logger("Message sent")
 
     def _recv_message(self, sender, body):
         key = self.key_map[sender]
@@ -96,12 +105,14 @@ class Client(Thread):
         message = None
         try:
             # Check for messages
-            with bb84.get_CQCConnection(self.node_name) as rx:
-                self.q_logger("Attempting to receive new messages")
-                m = rx.recvClassical(timout=1).decode("utf-8")
-                self.q_logger("Received new messages")
-                message = json.loads(m)
-            self.q_logger("Got past message check")
+            rx_ready, tx_ready, _ = select.select([self.conn], [self.conn], [], 1)
+            for rx in rx_ready:
+                self.message_add(("rx: ", self.conn.recv(1024)))
+            for tx in tx_ready:
+                while self.msg_queue.not_empty():
+                    msg = self.msg_queue.get()
+                    self._send
+                self.message_add(("rx: ", self.conn.recv(1024)))
             # Check message type
             if message.get("code") == Q_KEYGEN:
                 self._recv_keygen(message["sender"])

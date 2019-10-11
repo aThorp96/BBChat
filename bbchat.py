@@ -36,7 +36,7 @@ class BBChat(npyscreen.StandardApp):
         self.initialize_handers()
         if self.client is None:
             self.client = Client(
-                # self.initiator,
+                self.initiator,
                 self.key_length,
                 self.add_message,
                 q_logger=self.add_q_log,
@@ -122,15 +122,16 @@ class MainForm(npyscreen.FormBaseNew):
 
 
 initialize = ""
+opts = None
 try:
-    opts, args = getopt.getopt(sys.argv[1:], "i")
+    opts, args = getopt.getopt(sys.argv[1:], "ip:n:r:q:")
 except getopt.GetoptError:
     pass
 
 bbConfig.config()
 MyApp = BBChat()
 try:
-    for opt, _ in opts:
+    for opt, arg in opts:
         if opt == "-i":
             MyApp.configure(initiator=True)
             MyApp.run()
