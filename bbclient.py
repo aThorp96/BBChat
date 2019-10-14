@@ -1,4 +1,5 @@
 import sys
+import socket
 import array
 import json
 import logging
@@ -42,17 +43,30 @@ class Client(Thread):
 
     def run(self):
         # Generate a key and then begin listining for messages
-        if self.initiator:
-            self._initiate_keygen(self.recipient)
-        else:
-            self._recv_keygen(self.recipient)
+        try:
+            if self.initiator:
+                self._initiate_keygen(self.recipient)
+            else:
+                self._recv_keygen(self.recipient)
+            self.q_logger("Fetching connection")
 
-        self.conn = bb84.get_CQCConnection(self.node_name)._classicalConn[
-            self.recipient
-        ]
-        # main loop
-        while self.listening:
-            self._check_messages()
+            cqc = bb84.get_CQCConnection(self.node_name)
+            cqc.close()
+
+            # Get connection to recipient
+            addr = cqc._appNet.hostDict[self.recipient].addr
+            self.conn = socket.socket(addr[0], addr[1], addr[2])
+
+            self.message_add(("addr", addr[4]))
+            self.conn.connect(addr[4])
+
+            # main loop
+            while self.listening:
+                self.q_logger("Listening")
+                self._check_messages()
+        except Exception as e:
+            self.message_add(("err", e))
+
 
     def _initiate_keygen(self, recipient):
         init_msg = {"code": Q_KEYGEN, "sender": self.node_name}
@@ -105,10 +119,13 @@ class Client(Thread):
         message = None
         try:
             # Check for messages
+            self.q_logger("Listening for new stuff")
             rx_ready, tx_ready, _ = select.select([self.conn], [self.conn], [], 1)
             for rx in rx_ready:
+                self.q_logger("rx ready")
                 self.message_add(("rx: ", self.conn.recv(1024)))
             for tx in tx_ready:
+                self.q_logger("tx ready")
                 while self.msg_queue.not_empty():
                     msg = self.msg_queue.get()
                     self._send
@@ -123,11 +140,10 @@ class Client(Thread):
                 self._recv_message(message["sender"], body)
 
         except Exception as e:
-            # self.q_logger("Exception: {}".format(e))
+            self.q_logger("Exception: {}".format(e))
             _log.debug(e)
 
     def exit(self):
         # TODO figure out how the hell to close this...
-        bb84.get_CQCConnection(self.node_name).exit()
-        self.running = False
+        self.listen= False
         self.join()
