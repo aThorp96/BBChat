@@ -58,12 +58,13 @@ class Client(Thread):
             cqc = bb84.get_CQCConnection(self.node_name)
             cqc.close()
 
+            port = 7777
             # Get connection to recipient
             if self.initiator:
-                self.start_rx(cqc, 8080)
+                self.start_rx(cqc, port)
                 # self.start_tx(cqc, 8081)
             else:
-                self.start_tx(cqc, 8080)
+                self.start_tx(cqc, port)
                 # self.start_rx(cqc, 8080)
 
             self.q_logger("Listening")
@@ -89,7 +90,7 @@ class Client(Thread):
         self.info("Connected to {}".format(addr))
         """
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.bind(("", 8080))
+        s.bind(("", port))
         s.listen(1)
         while self.conn is None:
             (self.conn, addr) = s.accept()
@@ -99,7 +100,7 @@ class Client(Thread):
         self.conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.info("Connecting")
         self.info("Trying to connect to ({}, {})".format("", port))
-        self.conn.connect(("", 8080))
+        self.conn.connect(("", port))
 
     def info(self, msg):
         self.message_add(("INFO", msg))
@@ -175,7 +176,7 @@ class Client(Thread):
                 with bb84.get_CQCConnection(self.node_name) as rx:
                     body = rx.recvClassical()
                 self._recv_message(message["sender"], body)
-                """
+            """
 
         except Exception as e:
             self.info("Exception: {}".format(e))
@@ -186,6 +187,7 @@ class Client(Thread):
 
     def exit(self):
         # TODO figure out how the hell to close this...
+        self.listening = False
         if not self.conn is None:
             self.conn.close()
-        os.kill(self.ident, signal.SIGTERM)
+        # os.kill(self.ident, signal.SIGTERM)
