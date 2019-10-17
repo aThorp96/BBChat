@@ -1,16 +1,23 @@
 import sys
+import signal
 import getopt
 import npyscreen
 import curses
+import logging
 
 from bbclient import *
+import config as bbConfig
+
+_log = logging.getLogger("BBChat")
 
 
 class BBChat(npyscreen.StandardApp):
     message_store = []
 
     def configure(self, initiator=True, client=None, key_length=32):
+        _log.debug("configuring chat object")
         self.initiator = initiator
+        self.key_length = key_length
 
         if initiator:
             self.name = "Alice"
@@ -19,8 +26,6 @@ class BBChat(npyscreen.StandardApp):
             self.name = "Bob"
             self.recipient = "Alice"
         self.client = client
-        if self.client is None:
-            self.client = Client(initiator, key_length, q_logger=self.add_q_log)
 
     def onStart(self):
         # Start TUI
@@ -29,8 +34,19 @@ class BBChat(npyscreen.StandardApp):
         # In case I want to display an initial message
         self.tui.set_messages(self.message_store)
         self.initialize_handers()
+        if self.client is None:
+            self.client = Client(
+                self.initiator,
+                self.key_length,
+                self.add_message,
+                q_logger=self.add_q_log,
+                node_name=self.name,
+            )
+        _log.debug("Client running")
 
     def initialize_handers(self):
+        signal.signal(signal.SIGTERM, self.exit_func)
+        signal.signal(signal.SIGINT, self.exit_func)
         new_handlers = {
             "^Q": self.exit_func,
             curses.ascii.alt(curses.ascii.NL): self.send_message,
@@ -55,7 +71,8 @@ class BBChat(npyscreen.StandardApp):
         # Send message to remote user
         self.client.send_message(self.recipient, m)
 
-    def exit_func(self, _input):
+    def exit_func(self, *args):
+        self.client.exit()
         exit(0)
 
 
@@ -105,19 +122,24 @@ class MainForm(npyscreen.FormBaseNew):
 
 
 initialize = ""
+opts = None
 try:
-    opts, args = getopt.getopt(sys.argv[1:], "i")
+    opts, args = getopt.getopt(sys.argv[1:], "ip:n:r:q:")
 except getopt.GetoptError:
     pass
 
+bbConfig.config()
 MyApp = BBChat()
-for opt, _ in opts:
-    if opt == "-i":
-        MyApp.configure(initiator=True)
+try:
+    for opt, arg in opts:
+        if opt == "-i":
+            MyApp.configure(initiator=True)
+            MyApp.run()
+        else:
+            print(usage)
+            sys.exit(2)
+    if len(opts) < 1:
+        MyApp.configure(initiator=False)
         MyApp.run()
-    else:
-        print(usage)
-        sys.exit(2)
-if len(opts) < 1:
-    MyApp.configure(initiator=False)
-    MyApp.run()
+except Exception as e:
+    _log.debug(e)
