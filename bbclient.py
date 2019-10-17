@@ -57,13 +57,13 @@ class Client(Thread):
             # With the key generated, connect to peer
             self.info("Fetching connection")
 
-            port = 7777
+            port = 7070
             # Get connection to recipient
             if self.initiator:
-                self.start_rx(cqc, port)
+                self.start_rx(port)
                 # self.start_tx(cqc, 8081)
             else:
-                self.start_tx(cqc, port)
+                self.start_tx(port)
                 # self.start_rx(cqc, 8080)
 
             self.q_logger("Listening")
@@ -104,7 +104,7 @@ class Client(Thread):
         self.info("Trying to connect to ({}, {})".format("", port))
         for i in range(attempts):
             try:
-                self.conn.connect(("", 8080))
+                self.conn.connect(("", port))
             except:
 
                 if i < attempts:
