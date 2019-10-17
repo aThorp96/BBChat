@@ -37,6 +37,7 @@ class Client(Thread):
         else:
             self.recipient = "Alice"
 
+        self.key_length = key_length
         self.node_name = node_name
         self.q_logger = q_logger
         self.message_add = message_add
@@ -55,16 +56,11 @@ class Client(Thread):
 
             # With the key generated, connect to peer
             self.info("Fetching connection")
-            cqc = bb84.get_CQCConnection(self.node_name)
-            cqc.close()
-
             # Get connection to recipient
             if self.initiator:
-                self.start_rx(cqc, 8080)
-                # self.start_tx(cqc, 8081)
+                self.start_rx(8080)
             else:
-                self.start_tx(cqc, 8080)
-                # self.start_rx(cqc, 8080)
+                self.start_tx(8080)
 
             self.q_logger("Listening")
             # main loop
@@ -73,7 +69,7 @@ class Client(Thread):
         except Exception as e:
             self.message_add(("err", e))
 
-    def start_rx(self, cqc, port):
+    def start_rx(self, port):
         """
         self.rx = None
         self.info("Opening socket")
@@ -89,17 +85,29 @@ class Client(Thread):
         self.info("Connected to {}".format(addr))
         """
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(1)
         s.bind(("", 8080))
         s.listen(1)
-        while self.conn is None:
+        while self.conn is None and self.listening:
             (self.conn, addr) = s.accept()
+        self.info("Connected to {}".format(addr))
 
-    def start_tx(self, cqc, port):
+    def start_tx(self, port):
+        attempts = 10
         self.info("Opening socket")
         self.conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.info("Connecting")
         self.info("Trying to connect to ({}, {})".format("", port))
-        self.conn.connect(("", 8080))
+        for i in range(10):
+            try:
+                self.conn.connect(("", 8080))
+            except:
+
+                if i < attempts:
+                    self.q_logger("Trying again")
+                else:
+                    self.q_logger("Connection rejected")
+                    self.exit()
 
     def info(self, msg):
         self.message_add(("INFO", msg))
@@ -110,8 +118,12 @@ class Client(Thread):
         # cqc.sendClassical(recipient, json.dumps(init_msg).encode())
         try:
             k = bb84.initiate_keygen(
-                name=self.node_name, recipient=recipient, q_logger=self.q_logger
+                name=self.node_name,
+                recipient=recipient,
+                q_logger=self.q_logger,
+                key_size=self.key_length,
             )
+            self.info("storing key")
             self.key_map[recipient] = k
         except bb84.PoorErrorRate as e:
             self.q_logger("Bad error rate. Attempting again")
@@ -123,6 +135,7 @@ class Client(Thread):
             k = bb84.target_keygen(
                 name=self.node_name, initiator=initiator, q_logger=self.q_logger
             )
+            self.info("storing key")
             self.key_map[initiator] = k
         except bb84.PoorErrorRate as e:
             self.q_logger("Bad error rate. Attempting again")
