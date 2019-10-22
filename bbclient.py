@@ -1,17 +1,16 @@
 import array
-import sys
-import os
-import socket
-import signal
-import select
 import json
 import logging
+import os
 import queue
-from cqc.pythonLib import CQCConnection
+import select
+import signal
+import socket
+import sys
 from threading import Thread
 
-sys.path.append("../")
-from bb84.bb84 import bb84
+from bb84 import bb84
+from cqc.pythonLib import CQCConnection
 
 # Com Headers
 Q_KEYGEN = 5
