@@ -21,7 +21,6 @@ Naked==0.1.31
 networkx==2.4
 npyscreen==4.10.5
 numpy==1.17.3
-pkg-resources==0.0.0
 pycodestyle==2.5.0
 pycryptodome==3.9.0
 pyflakes==2.1.1

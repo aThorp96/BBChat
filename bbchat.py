@@ -14,7 +14,14 @@ _log = logging.getLogger("BBChat")
 class BBChat(npyscreen.StandardApp):
     message_store = []
 
-    def configure(self, initiator=True, client=None, key_length=32):
+    def configure(
+        self,
+        initiator=True,
+        client=None,
+        key_length=32,
+        eavesdropping=None,
+        eavesdropper=False,
+    ):
         _log.debug("configuring chat object")
         self.initiator = initiator
         self.key_length = key_length
@@ -24,7 +31,12 @@ class BBChat(npyscreen.StandardApp):
             self.recipient = "Bob"
         else:
             self.name = "Bob"
-            self.recipient = "Alice"
+            self.recipient = "Bob"
+
+        # If we're using an evesdropper redirect communication
+        if eavesdropping:
+            self.recipient = "Eve"
+
         self.client = client
 
     def onStart(self):
@@ -41,6 +53,7 @@ class BBChat(npyscreen.StandardApp):
                 self.add_message,
                 q_logger=self.add_q_log,
                 node_name=self.name,
+                recipient=self.recipient,
             )
         _log.debug("Client running")
 
@@ -54,17 +67,37 @@ class BBChat(npyscreen.StandardApp):
         self.tui.add_handlers(new_handlers)
 
     def add_q_log(self, entry):
-        self.tui.quantum_log.append(str(entry))
+
+        msg = str(entry)
+        width = self.tui.quantum_status.width - 5
+        for i in range(0, len(msg), width):
+            end = i + width
+
+            if i + width > len(msg):
+                end = len(msg)
+
+            self.tui.quantum_log.append(msg[i:end])
         self.tui.quantum_status.values = self.tui.quantum_log
         self.tui.quantum_status.display()
 
     def add_message(self, entry):
-        self.message_store.append(entry)
+        # Add message sender
+        self.message_store.append(entry[0] + ":")
+        # Slice messages by width and add them to the message store
+        msg = str(entry[1])
+        width = self.tui.message_viewer.width - 5
+        for i in range(0, len(msg), width):
+            end = i + width
+
+            if i + width > len(msg):
+                end = len(msg)
+
+            self.message_store.append(msg[i:end])
+
         self.tui.set_messages(self.message_store)
 
     def send_message(self, some_value):
         # Update view
-        m = self.tui.input.value
         self.tui.input.value = ""
         self.add_message(("me", m))
 
@@ -78,6 +111,10 @@ class BBChat(npyscreen.StandardApp):
 
 class MessageInput(npyscreen.BoxTitle):
     _contained_widget = npyscreen.MultiLineEdit
+
+
+class Viewer(npyscreen.BoxTitle):
+    _contained_widget = npyscreen.Pager
 
 
 ###############################################
@@ -98,7 +135,7 @@ class MainForm(npyscreen.FormBaseNew):
             relx=2,
         )
         self.quantum_status = self.add(
-            npyscreen.BoxTitle,
+            Viewer,
             name="Quantum Log",
             values=self.quantum_log,
             relx=2 * x // 3,
@@ -106,7 +143,7 @@ class MainForm(npyscreen.FormBaseNew):
             max_width=x // 3 - 2,
         )
         self.message_viewer = self.add(
-            npyscreen.BoxTitle,
+            Viewer,
             name="Chat",
             values=[],
             max_height=2 * y // 3,
@@ -116,30 +153,34 @@ class MainForm(npyscreen.FormBaseNew):
         )
 
     def set_messages(self, messages):
-        fmt_messages = ["{}: {}".format(i[0], i[1]) for i in messages]
-        self.message_viewer.values = fmt_messages
+        # fmt_messages = ["{}: {}".format(i[0], i[1]) for i in messages]
+        self.message_viewer.values = messages
         self.message_viewer.display()
 
 
 initialize = ""
 opts = None
 try:
-    opts, args = getopt.getopt(sys.argv[1:], "ip:n:r:q:")
+    opts, args = getopt.getopt(sys.argv[1:], "ie", ["eavesdrop"])
 except getopt.GetoptError:
     pass
 
 bbConfig.config()
-MyApp = BBChat()
+myapp = BBChat()
+kwargs = {"initiator": False, "eavesdropping": False, "eavesdropper": False}
 try:
     for opt, arg in opts:
         if opt == "-i":
-            MyApp.configure(initiator=True)
-            MyApp.run()
+            kwargs["initiator"] = True
+        elif opt == "-e":
+            kwargs["eavesdropper"] = True
+        elif opt == "--eavesdropp":
+            kwargs["eavesdropping"] = True
         else:
             print(usage)
             sys.exit(2)
-    if len(opts) < 1:
-        MyApp.configure(initiator=False)
-        MyApp.run()
+    myapp.configure(**kwargs)
+    myapp.run()
 except Exception as e:
+    myapp.exit_func()
     _log.debug(e)

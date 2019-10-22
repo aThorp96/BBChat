@@ -24,7 +24,13 @@ class Client(Thread):
     key_map = {}
 
     def __init__(
-        self, initiator, key_length, message_add, node_name="Alice", q_logger=print
+        self,
+        initiator,
+        key_length,
+        message_add,
+        node_name="Alice",
+        recipient="Bob",
+        q_logger=print,
     ):
         # For now use a key for a default recipient, "Bob"
         Thread.__init__(self)
