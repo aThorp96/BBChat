@@ -59,8 +59,6 @@ class Client(Thread):
                 self._recv_keygen(self.recipient)
 
             # With the key generated, connect to peer
-            self.info("Fetching connection")
-
             port = 7070
             # Get connection to recipient
             if self.initiator:
@@ -158,7 +156,11 @@ class Client(Thread):
         # packet = json.dumps({"code": MESSAGE, "sender": self.node_name})
 
         self.q_logger("Encrypting message")
-        encrypted = bb84.encrypt(message, int(key))
+        try:
+            encrypted = bb84.encrypt(message, int(key))
+        except Exception as e:
+            self.info("Error encrypting: {}".format(e))
+            return
 
         self.q_logger("Transmitting message")
         # cqc.sendClassical(recipient, bytearray(packet, "utf-8"))

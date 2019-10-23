@@ -97,13 +97,14 @@ class BBChat(npyscreen.StandardApp):
 
         self.tui.set_messages(self.message_store)
 
-    def send_message(self, some_value):
+    def send_message(self, _):
         # Update view
+        msg = self.tui.input.value
         self.tui.input.value = ""
-        self.add_message(("me", m))
+        self.add_message(("me", msg))
 
         # Send message to remote user
-        self.client.send_message(self.recipient, m)
+        self.client.send_message(self.recipient, msg)
 
     def exit_func(self, *args):
         print("Killing listener")
@@ -185,5 +186,6 @@ try:
     myapp.configure(**kwargs)
     myapp.run()
 except Exception as e:
+    print(e)
     myapp.exit_func()
     _log.debug(e)
