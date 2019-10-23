@@ -49,7 +49,6 @@ class Client(Thread):
         self.msg_queue = queue.Queue()
         self.conn = None
         self.listening = True
-        self.start()
 
     def run(self):
         # Generate key
@@ -188,16 +187,6 @@ class Client(Thread):
                     msg = self.msg_queue.get()
                     self._send_message(msg)
                 # self.message_add(("rx: ", self.conn.recv(1024)))
-            """
-            # Check message type
-            if message.get("code") == Q_KEYGEN:
-                self._recv_keygen(message["sender"])
-            elif message.get("code") == MESSAGE:
-                self.q_logger("Incoming message from {}".format(message["sender"]))
-                with bb84.get_CQCConnection(self.node_name) as rx:
-                    body = rx.recvClassical()
-                self._recv_message(message["sender"], body)
-            """
 
         except Exception as e:
             self.info("Exception: {}".format(e))

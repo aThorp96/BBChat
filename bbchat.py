@@ -55,6 +55,7 @@ class BBChat(npyscreen.StandardApp):
                 node_name=self.name,
                 recipient=self.recipient,
             )
+        self.client.start()
         _log.debug("Client running")
 
     def initialize_handers(self):
@@ -105,7 +106,9 @@ class BBChat(npyscreen.StandardApp):
         self.client.send_message(self.recipient, m)
 
     def exit_func(self, *args):
+        print("Killing listener")
         self.client.exit()
+        self.client.join()
         exit(0)
 
 
