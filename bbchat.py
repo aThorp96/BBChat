@@ -13,6 +13,8 @@ _log = logging.getLogger("BBChat")
 
 class BBChat(npyscreen.StandardApp):
     message_store = []
+    quantum_log = []
+    mode = "KEYGEN"
 
     def configure(
         self,
@@ -34,7 +36,7 @@ class BBChat(npyscreen.StandardApp):
             self.recipient = "Bob"
 
         # If we're using an evesdropper redirect communication
-        if eavesdropping:
+        if eavesdropper:
             self.recipient = "Eve"
 
         self.client = client
@@ -42,7 +44,10 @@ class BBChat(npyscreen.StandardApp):
     def onStart(self):
         # Start TUI
         app_name = "bbchat"
-        self.tui = self.addForm("MAIN", MainForm, name=app_name)
+        self.qv = self.addForm("MAIN", QuantumViewer, name=app_name)
+        self.tui = self.addForm("CHAT", MainForm, name=app_name)
+        self.view = self.qv
+
         # In case I want to display an initial message
         self.tui.set_messages(self.message_store)
         self.initialize_handers()
@@ -56,50 +61,68 @@ class BBChat(npyscreen.StandardApp):
                 recipient=self.recipient,
             )
         self.client.start()
-        _log.debug("Client running")
+
+    def chat(self, _):
+        self.view.editing = False
+        self.switchForm("CHAT")
+        self.view = self.tui
+        q_log = self.quantum_log
+        self.quantum_log = []
+        for l in q_log:
+            self.add_q_log(l)
 
     def initialize_handers(self):
         signal.signal(signal.SIGTERM, self.exit_func)
         signal.signal(signal.SIGINT, self.exit_func)
-        new_handlers = {
+
+        tui_handlers = {
             "^Q": self.exit_func,
             curses.ascii.alt(curses.ascii.NL): self.send_message,
         }
-        self.tui.add_handlers(new_handlers)
+        self.tui.add_handlers(tui_handlers)
+
+        q_log_handlers = {curses.ascii.alt(curses.ascii.NL): self.chat}
+        self.qv.add_handlers(q_log_handlers)
 
     def add_q_log(self, entry):
-
         msg = str(entry)
-        width = self.tui.quantum_status.width - 5
+        width = self.view.quantum_status.width - 7
         for i in range(0, len(msg), width):
             end = i + width
 
             if i + width > len(msg):
                 end = len(msg)
 
-            self.tui.quantum_log.append(msg[i:end])
-        self.tui.quantum_status.values = self.tui.quantum_log
-        self.tui.quantum_status.display()
+            self.quantum_log = [msg[i:end]] + self.quantum_log
+        # Update the appropriate form
+        self.view.quantum_status.values = self.quantum_log
+        self.view.quantum_status.display()
 
     def add_message(self, entry):
         # Add message sender
-        self.message_store.append(entry[0] + ":")
         # Slice messages by width and add them to the message store
         msg = str(entry[1])
-        width = self.tui.message_viewer.width - 5
+        width = self.tui.message_viewer.width - 7
+        message_parts = []
         for i in range(0, len(msg), width):
             end = i + width
 
             if i + width > len(msg):
                 end = len(msg)
 
-            self.message_store.append(msg[i:end])
+            message_parts.append("  " + msg[i:end])
 
-        self.tui.set_messages(self.message_store)
+        self.message_store = message_parts + self.message_store
+        self.message_store = [entry[0] + ":"] + self.message_store
+        self.view.set_messages(self.message_store)
 
     def send_message(self, _):
         # Update view
         msg = self.tui.input.value
+
+        if msg == "":
+            return
+
         self.tui.input.value = ""
         self.add_message(("me", msg))
 
@@ -124,6 +147,17 @@ class Viewer(npyscreen.BoxTitle):
 ###############################################
 # TUI prototype
 ###############################################
+class QuantumViewer(npyscreen.FormBaseNew):
+    quantum_log = []
+
+    # constructor
+    def create(self):
+        self.quantum_status = self.add(npyscreen.Pager, values=self.quantum_log)
+
+    def set_messages(self, messages):
+        self.quantum_status.values = messages + self.quantum_status.values
+
+
 class MainForm(npyscreen.FormBaseNew):
     quantum_log = []
 
@@ -145,6 +179,7 @@ class MainForm(npyscreen.FormBaseNew):
             relx=2 * x // 3,
             rely=2,
             max_width=x // 3 - 2,
+            editable=False,
         )
         self.message_viewer = self.add(
             Viewer,
@@ -154,12 +189,13 @@ class MainForm(npyscreen.FormBaseNew):
             max_width=2 * x // 3 - 4,
             rely=2,
             relx=2,
+            editable=False,
         )
 
     def set_messages(self, messages):
         # fmt_messages = ["{}: {}".format(i[0], i[1]) for i in messages]
         self.message_viewer.values = messages
-        self.message_viewer.display()
+        self.message_viewer.update()
 
 
 initialize = ""

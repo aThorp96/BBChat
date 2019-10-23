@@ -31,6 +31,7 @@ class Client(Thread):
         node_name="Alice",
         recipient="Bob",
         q_logger=print,
+        key_generated=None,
     ):
         # For now use a key for a default recipient, "Bob"
         Thread.__init__(self)
@@ -49,6 +50,7 @@ class Client(Thread):
         self.msg_queue = queue.Queue()
         self.conn = None
         self.listening = True
+        self.key_generated = key_generated
 
     def run(self):
         # Generate key
@@ -57,6 +59,9 @@ class Client(Thread):
                 self._initiate_keygen(self.recipient)
             else:
                 self._recv_keygen(self.recipient)
+
+            if self.key_generated != None:
+                self.key_generated()
 
             # With the key generated, connect to peer
             port = 7070
