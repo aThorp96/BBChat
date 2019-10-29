@@ -38,10 +38,7 @@ class Client(Thread):
         self.initiator = initiator
 
         # Yeah.. if we would get rid of this code at some point, that'd be great..
-        if self.initiator:
-            self.recipient = "Bob"
-        else:
-            self.recipient = "Alice"
+        self.recipient = recipient
 
         self.key_length = key_length
         self.node_name = node_name
@@ -61,7 +58,7 @@ class Client(Thread):
                 self._recv_keygen(self.recipient)
 
             if self.key_generated != None:
-                self.key_generated()
+                self.key_generated(int(self.key_map[self.recipient]))
 
             # With the key generated, connect to peer
             port = 7070

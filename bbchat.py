@@ -59,6 +59,7 @@ class BBChat(npyscreen.StandardApp):
                 q_logger=self.add_q_log,
                 node_name=self.name,
                 recipient=self.recipient,
+                key_generated=self.show_key,
             )
         self.client.start()
 
@@ -70,6 +71,9 @@ class BBChat(npyscreen.StandardApp):
         self.quantum_log = []
         for l in q_log:
             self.add_q_log(l)
+
+    def show_key(self, key):
+        self.add_message(("Key", hex(key)))
 
     def initialize_handers(self):
         signal.signal(signal.SIGTERM, self.exit_func)
@@ -120,14 +124,11 @@ class BBChat(npyscreen.StandardApp):
         # Update view
         msg = self.tui.input.value
 
-        if msg == "":
-            return
-
-        self.tui.input.value = ""
-        self.add_message(("me", msg))
-
-        # Send message to remote user
-        self.client.send_message(self.recipient, msg)
+        if msg != "":
+            self.tui.input.value = ""
+            self.add_message(("me", msg))
+            # Send message to remote user
+            self.client.send_message(self.recipient, msg)
 
     def exit_func(self, *args):
         print("Killing listener")
@@ -201,21 +202,19 @@ class MainForm(npyscreen.FormBaseNew):
 initialize = ""
 opts = None
 try:
-    opts, args = getopt.getopt(sys.argv[1:], "ie", ["eavesdrop"])
+    opts, args = getopt.getopt(sys.argv[1:], "ie")
 except getopt.GetoptError:
     pass
 
 bbConfig.config()
 myapp = BBChat()
-kwargs = {"initiator": False, "eavesdropping": False, "eavesdropper": False}
+kwargs = {"initiator": False, "eavesdropper": False}
 try:
     for opt, arg in opts:
         if opt == "-i":
             kwargs["initiator"] = True
         elif opt == "-e":
             kwargs["eavesdropper"] = True
-        elif opt == "--eavesdropp":
-            kwargs["eavesdropping"] = True
         else:
             print(usage)
             sys.exit(2)

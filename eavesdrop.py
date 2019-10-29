@@ -1,3 +1,8 @@
+from time import sleep
+from BitVector import BitVector
+from cqc.pythonLib import CQCConnection, qubit
+from bb84 import bb84
+
 """
 BB84 eavesdropping simulator
 author: Andrew H. Thorp andrew.thorp.dev@gmail.com
@@ -30,20 +35,23 @@ TAMPERED = 80
 # Opperations
 ###################
 key_size = 32
-name = "Alice"
-recipient = "Bob"
+name = "Eve"
 acceptable_error = 0.5
 length = 3 * key_size
 
-with CQCConnection(name) as conn:
+
+def eavesdrop(conn):
+    print("Connection made")
 
     """
     Length
     """
     # Intercept length from Alice
     length = int.from_bytes(conn.recvClassical(), byteorder="big")
+    print("Recieved length")
     # Forward length bob
     conn.sendClassical("Bob", length)
+    print("Forwarded length")
 
     """
     Confirmation
@@ -58,33 +66,36 @@ with CQCConnection(name) as conn:
     """
     sleep(15)
     # Intercept qubits from Alice
+    qubits = [None] * length
     for i in range(length):
-        qubits[i] = conn.recvQubit()  # Send all the qubits sequentially
+        qubits[i] = conn.recvQubit()
+        # Forward qubits to Bob
+        conn.sendQubit(qubits[i], "Bob")
 
     """
     Manipulate qubits here
-    ~ evil laughter ~
+    ~~ evil laughter ~~
     """
-
-    # Forward qubits to Bob
-    for q in qubits:
-        conn.sendQubit(q, "Bob")
 
     """
     Basis comparison
     """
     # receive bases used by Bob
-    bobs_bases = BitVector(bitlist=conn.recvClassical())
+
     # Forward Bob's bases to Alice
-    conn.sendClassical("Alice", bobs_bases[:])
+    conn.sendClassical("Alice", conn.recvClassical())
     # Intercept correct bases from Alice
     correct = BitVector(bitlist=conn.recvClassical())
     # Forward correct bases to Bob
     conn.sendClassical("Bob", correct[:])
 
+    if correct.count_bits() < length * acceptable_error:
+        eavesdrop(conn)
+        return
     # When we start measuring the qubits we'll use this
     # MUHAHAHA this will definitely work
     """
+    # Remove all incorrectly measured bits
     key = truncate_key(key, length, correct)
 
     if validate_generated_key(length, acceptable_error, key) != OK:
@@ -99,13 +110,26 @@ with CQCConnection(name) as conn:
     """
     # Intercept verification bits from Bob
     verification_bits = BitVector(bitlist=conn.recvClassical())
+    # Forward verification bits to Alice
     conn.sendClassical("Alice", verification_bits[:])
 
+    # Intercept response from Alice
     response = conn.recvClassical()
-    conn.sendClassical(initiator, response)
+    # Forward response from Bob
+    conn.sendClassical("Bob", response)
 
     if response == TAMPERED:
         print("Blast! Foiled again!")
 
+    # Intercept echo from Bob
     echo = conn.recvClassical()
-    conn.sendClassical(initiator, echo)
+    # Forward echo to Alice
+    conn.sendClassical("Alice", echo)
+
+    # The client will attempt to re-exchange
+    if response == OK:
+        print("Key exhanged!")
+
+
+with CQCConnection(name) as conn:
+    eavesdrop(conn)
