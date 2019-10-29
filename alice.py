@@ -26,15 +26,17 @@ def initiate_keygen_standard(
 
         # Get key, encode key, send to bob
         key = random.randint(0, pow(2, length) - 1)
-        qubits = encode_hadamard(conn, key)
-        bases = BitVector(intVal=1, size=length)
+        qubits = encode_standard(conn, key)
+        bases = BitVector(bitlist=[1] * length)
         key_bit_vect = BitVector(intVal=key)
         q_logger("Key:      {}".format(bin(key)))
         q_logger("Bases:    {}".format(bin(int(bases))))
 
         # Send all the qubits sequentially
         for q in qubits:
-            conn.sendQubit(q, recipient)
+            r = recipient
+            # r = "Eve"
+            conn.sendQubit(q, r)
         q_logger("sent qubits!")
 
         # receive bases used by Bob
@@ -74,7 +76,7 @@ def initiate_keygen_standard(
 
 def get_key():
     try:
-        return initiate_keygen_standard(key_size=4, recipient="Eve")
+        return initiate_keygen_standard(key_size=4, recipient="Bob")
     except PoorErrorRate as e:
         return get_key()
 

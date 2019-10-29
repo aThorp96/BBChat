@@ -132,4 +132,8 @@ def eavesdrop(conn):
 
 
 with CQCConnection(name) as conn:
-    eavesdrop(conn)
+    while True:
+        q = conn.recvQubit()
+        # Forward qubits to Bob
+        conn.sendQubit(q, "Bob")
+        # eavesdrop(conn)

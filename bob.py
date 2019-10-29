@@ -25,8 +25,8 @@ def target_keygen_standard(name="Bob", initiator="Alice", q_logger=print):
 
         q_logger("Recieved qubits!")
 
-        key = measure_hadamard(qubits)
-        bases = BitVector(intVal=1, size=length)
+        key = measure_standard(qubits)
+        bases = BitVector(bitlist=[1] * length)
         q_logger("Key:     {}".format(bin(key)))
         q_logger("Bases:   {}".format(bin(bases.int_val())))
 
@@ -62,7 +62,7 @@ def target_keygen_standard(name="Bob", initiator="Alice", q_logger=print):
 
 def get_key():
     try:
-        return target_keygen_standard(initiator="Eve")
+        return target_keygen_standard(initiator="Alice")
     except PoorErrorRate as e:
         return get_key()
 
